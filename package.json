@@ -1,0 +1,54 @@
+{
+  "name": "@bowire/plugin",
+  "version": "0.1.0",
+  "description": "Node.js SDK for authoring Bowire sidecar plugins over JSON-RPC (stdio + HTTP/SSE).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "example:echo": "tsx examples/echo/main.ts"
+  },
+  "keywords": [
+    "bowire",
+    "sidecar",
+    "plugin",
+    "json-rpc",
+    "sse"
+  ],
+  "author": "Kuestenlogik",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kuestenlogik/Bowire.Sdk.Node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kuestenlogik/Bowire.Sdk.Node/issues"
+  },
+  "homepage": "https://bowire.io",
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
