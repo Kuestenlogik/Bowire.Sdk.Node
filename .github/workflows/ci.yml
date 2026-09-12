@@ -34,6 +34,22 @@ jobs:
       - name: Test
         run: npm test
 
+      # The example is the only runnable demonstration of the SDK, and until
+      # now nothing exercised it: the build config excludes examples/, so a
+      # renamed parameter could leave it uncompilable while CI stayed green.
+      # Typecheck covers compiling it (tsconfig.check.json); this drives it.
+      #
+      # The assertion is the handshake (#416), not just the id — a reply
+      # without protocolVersion is what made the host treat every plugin
+      # built with this SDK as a legacy v1 sidecar.
+      - name: Example smoke test
+        run: |
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+          out=$(echo "$request" | npx tsx examples/echo/main.ts)
+          echo "$out"
+          echo "$out" | grep -q '"id":"echo"'
+          echo "$out" | grep -q '"protocolVersion":1'
+
   gate:
     name: gate
     needs: [build]

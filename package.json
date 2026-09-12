@@ -1,6 +1,6 @@
 {
   "name": "@bowire/plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node.js SDK for authoring Bowire sidecar plugins over JSON-RPC (stdio + HTTP/SSE).",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
     "clean": "rimraf dist",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "example:echo": "tsx examples/echo/main.ts"
   },
   "keywords": [

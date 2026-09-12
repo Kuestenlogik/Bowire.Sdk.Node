@@ -22,6 +22,7 @@ export {
   run,
   runHttp,
   dispatch,
+  SIDECAR_PROTOCOL_VERSION,
   type DispatchResult,
   type HttpRuntimeHandle,
   type Notification,
