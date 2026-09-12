@@ -25,36 +25,46 @@ export interface ChannelHandle {
 // The plugin contract every Bowire sidecar implements.
 //
 // Required: id, name, discover, invoke.
-// Optional: invokeStream, openChannel, settings, shutdown — defaults
-// in `BowirePluginBase` cover the common case.
+// Optional: iconSvg, invokeStream, openChannel, settings, shutdown —
+// defaults in `BowirePluginBase` cover the common case.
+//
+// Parameter names are the host's, deliberately: `serverUrl`,
+// `showInternalServices`, `jsonMessages` are what arrives on the wire
+// (see the Bowire repo's docs/architecture/sidecar-plugins.md). They used
+// to read `endpoint` / `refresh` / `body` here, which is why every
+// discover call reached a plugin with an empty URL.
 export interface BowirePlugin {
   id(): string;
   name(): string;
 
+  // Inline SVG for the protocol tab. Optional — the host falls back to a
+  // generic plug icon when absent.
+  iconSvg?(): string;
+
   discover(
-    endpoint: string,
-    refresh: boolean,
+    serverUrl: string,
+    showInternalServices: boolean,
   ): Promise<ServiceInfo[]> | ServiceInfo[];
 
   invoke(
-    endpoint: string,
+    serverUrl: string,
     service: string,
     method: string,
-    body: string[],
-    streaming: boolean,
+    jsonMessages: string[],
+    showInternalServices: boolean,
     metadata: Metadata,
   ): Promise<InvokeResult> | InvokeResult;
 
   invokeStream?(
-    endpoint: string,
+    serverUrl: string,
     service: string,
     method: string,
-    body: string[],
+    jsonMessages: string[],
     metadata: Metadata,
   ): AsyncIterable<InvokeStreamChunk>;
 
   openChannel?(
-    endpoint: string,
+    serverUrl: string,
     service: string,
     method: string,
     metadata: Metadata,
@@ -74,36 +84,42 @@ export abstract class BowirePluginBase implements BowirePlugin {
   abstract id(): string;
   abstract name(): string;
   abstract discover(
-    endpoint: string,
-    refresh: boolean,
+    serverUrl: string,
+    showInternalServices: boolean,
   ): Promise<ServiceInfo[]> | ServiceInfo[];
   abstract invoke(
-    endpoint: string,
+    serverUrl: string,
     service: string,
     method: string,
-    body: string[],
-    streaming: boolean,
+    jsonMessages: string[],
+    showInternalServices: boolean,
     metadata: Metadata,
   ): Promise<InvokeResult> | InvokeResult;
 
   async *invokeStream(
-    _endpoint: string,
+    _serverUrl: string,
     _service: string,
     _method: string,
-    _body: string[],
+    _jsonMessages: string[],
     _metadata: Metadata,
   ): AsyncIterable<InvokeStreamChunk> {
     // empty stream by default
   }
 
   async openChannel(
-    _endpoint: string,
+    _serverUrl: string,
     _service: string,
     _method: string,
     _metadata: Metadata,
     _channel: ChannelHandle,
   ): Promise<void> {
     // no-op; subclasses override for duplex protocols
+  }
+
+  // The host falls back to a generic plug icon on an empty string, so a
+  // plugin that does not care about its tab icon overrides nothing.
+  iconSvg(): string {
+    return "";
   }
 
   settings(): PluginSetting[] {

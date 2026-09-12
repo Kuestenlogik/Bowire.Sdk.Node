@@ -47,21 +47,21 @@ class EchoPlugin extends BowirePluginBase {
     ];
   }
   override invoke(
-    _endpoint: string,
+    _serverUrl: string,
     _service: string,
     _method: string,
-    body: string[],
-    _streaming: boolean,
+    jsonMessages: string[],
+    _showInternalServices: boolean,
     _metadata: Metadata,
   ): InvokeResult {
-    const first = body[0] ?? "";
+    const first = jsonMessages[0] ?? "";
     return InvokeResult.ok(JSON.stringify({ echoed: first }));
   }
   override async *invokeStream(
-    _endpoint: string,
+    _serverUrl: string,
     _service: string,
     _method: string,
-    _body: string[],
+    _jsonMessages: string[],
     _metadata: Metadata,
   ): AsyncIterable<string> {
     for (let i = 0; i < 3; i++) {

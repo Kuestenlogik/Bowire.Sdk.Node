@@ -1,0 +1,18 @@
+// Type-check everything that ships or is meant to keep working — src, the
+// tests, and the runnable examples.
+//
+// The build config (tsconfig.json) deliberately excludes tests and examples:
+// it emits `dist` with `rootDir: src`, and an example under the root would
+// relocate the whole output tree. That left the examples checked by nothing,
+// so a signature change in the SDK could leave the only runnable
+// demonstration of it uncompilable and CI would still be green — which is
+// exactly what happened when the wire names were aligned with the host.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "examples/**/*"],
+  "exclude": ["dist", "node_modules"]
+}
