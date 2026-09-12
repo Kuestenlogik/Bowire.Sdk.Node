@@ -1,0 +1,21 @@
+// Compile the SDK *and* the example into one self-contained tree, for the e2e
+// job that installs the example as a real sidecar plugin.
+//
+// The build config (tsconfig.json) emits only `src` with `rootDir: src`, so the
+// example is not in `dist` and a plugin zip built from it would import a path
+// that is not there. Here `rootDir: "."` keeps the repo layout —
+// stage/src/... next to stage/examples/echo/main.js — so the example's
+// `../../src/index.js` import resolves exactly as it does in the checkout.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": ".",
+    "outDir": "./stage",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*", "examples/**/*"],
+  "exclude": ["dist", "node_modules", "tests", "stage"]
+}

@@ -50,9 +50,62 @@ jobs:
           echo "$out" | grep -q '"id":"echo"'
           echo "$out" | grep -q '"protocolVersion":1'
 
+  # Against the real host, not a test double. Every contract defect this SDK
+  # carried — endpoint/refresh/body parameter names nothing sends, a discover
+  # reply the host reads as "no services", a self-minted streamId, an
+  # initialize reply without the handshake, and a sidecar.json the installer
+  # rejects outright — was invisible to a suite that only ever talked to
+  # itself. This job does what an operator does: install the published Bowire
+  # CLI, install the example as a sidecar plugin, ask it to discover.
+  # `bowire discover` exits 0 only when a plugin actually returned a service,
+  # so the exit code is the assertion.
+  e2e:
+    name: e2e against Bowire
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Install the Bowire CLI
+        run: dotnet tool install --global Kuestenlogik.Bowire.Tool
+
+      # The zip has to be self-contained: the host spawns run.sh from inside
+      # the plugin directory with no node_modules to fall back on, so the
+      # compiled SDK travels with the compiled example (tsconfig.e2e.json
+      # keeps the repo layout so the example's relative import still lands).
+      - name: Package the example as a sidecar zip
+        run: |
+          npx tsc -p tsconfig.e2e.json
+          cp examples/echo/sidecar.json examples/echo/run.sh stage/
+          chmod +x stage/run.sh
+          cd stage && zip -r ../echo-node.zip . && cd ..
+          unzip -l echo-node.zip
+
+      - name: Install it as a plugin
+        run: |
+          bowire --plugin-dir "$PWD/plugins" plugin install --file echo-node.zip
+          bowire --plugin-dir "$PWD/plugins" plugin list --verbose
+
+      - name: Discover through the real host
+        run: |
+          out=$(bowire --plugin-dir "$PWD/plugins" discover --url "echo@http://localhost:1")
+          echo "$out"
+          echo "$out" | grep -q "EchoService"
+
   gate:
     name: gate
-    needs: [build]
+    needs: [build, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -60,5 +113,9 @@ jobs:
         run: |
           if [ "${{ needs.build.result }}" != "success" ]; then
             echo "matrix job did not succeed: ${{ needs.build.result }}"
+            exit 1
+          fi
+          if [ "${{ needs.e2e.result }}" != "success" ]; then
+            echo "e2e job did not succeed: ${{ needs.e2e.result }}"
             exit 1
           fi

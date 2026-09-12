@@ -1,7 +1,11 @@
 {
-  "id": "echo",
-  "name": "Echo",
-  "version": "0.1.0",
+  "packageId": "Kuestenlogik.Bowire.Sidecar.EchoNode",
+  "protocol": {
+    "id": "echo",
+    "name": "Echo (Node)"
+  },
+  "executable": "run.sh",
   "transport": "stdio",
-  "command": ["node", "dist/main.js"]
+  "envPrefix": "BOWIRE_",
+  "version": "0.1.0"
 }

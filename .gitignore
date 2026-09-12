@@ -10,3 +10,9 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .env.local
+
+# e2e staging: the compiled sidecar tree, its zip and the plugin dir the
+# CLI installs it into. All three are build output of the e2e job.
+stage/
+echo-node.zip
+.e2e-plugins/
