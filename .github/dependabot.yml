@@ -1,0 +1,41 @@
+version: 2
+
+# npm + the workflow pins. The lockfile is committed, so a bump has to land as
+# a PR rather than drift in at install time.
+#
+# The dev toolchain is grouped: typescript, vitest and tsx move together in
+# practice, and three separate PRs for one toolchain bump is noise, not
+# review.
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      toolchain:
+        patterns:
+          - "typescript"
+          - "vitest"
+          - "tsx"
+          - "rimraf"
+          - "@types/*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(actions)"
