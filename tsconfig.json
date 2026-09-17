@@ -4,6 +4,12 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
+    // TypeScript 7 stopped pulling every @types/* package in on its
+    // own, so the Node globals this SDK is built on -- process, Buffer,
+    // node:http -- resolved to nothing and the build failed with eleven
+    // TS2591s. Naming it is also the more honest statement: this package
+    // targets Node and nothing else.
+    "types": ["node"],
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
