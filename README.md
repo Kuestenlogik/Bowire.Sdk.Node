@@ -13,8 +13,9 @@ This package is the Node.js side of that bridge.
 npm install @bowire/plugin
 ```
 
-Requires Node.js 20 or newer (uses `node:crypto.randomUUID` and the
-global `fetch`-style streaming primitives).
+Requires Node.js 22.12 or newer (uses `node:crypto.randomUUID` and the
+global `fetch`-style streaming primitives). Node 20 was supported until
+it went end-of-maintenance on 2026-04-30.
 
 ## Author a plugin
 

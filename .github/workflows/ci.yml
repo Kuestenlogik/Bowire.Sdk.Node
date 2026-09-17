@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ["20", "22"]
+        # Node 20 went end-of-maintenance on 2026-04-30. Both entries
+        # here are active LTS lines (22 until 2027-04, 24 until
+        # 2028-04), and 22.12 is the floor package.json declares.
+        node-version: ["22", "24"]
     steps:
       - uses: actions/checkout@v4
 
