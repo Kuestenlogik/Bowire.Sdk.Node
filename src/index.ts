@@ -8,7 +8,10 @@ export {
   PluginSetting,
   ServiceInfo,
   type MethodType,
+  type SettingOption,
 } from "./models.js";
+
+export { SettingValues } from "./settings.js";
 
 export {
   BowirePluginBase,

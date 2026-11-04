@@ -123,4 +123,21 @@ describe("PluginSetting", () => {
     expect(json.defaultValue).toBe("localhost");
     expect(json.required).toBe(true);
   });
+
+  it("sends options for a select and omits them otherwise", () => {
+    // #693: a select without options has nothing to pick from. No SDK sent
+    // them before; the host now reads them.
+    const select = JSON.parse(
+      JSON.stringify(
+        new PluginSetting("mode", "Mode", "select").withOptions([
+          { value: "a", label: "Alpha" },
+          { value: "b" },
+        ]),
+      ),
+    );
+    expect(select.options).toEqual([{ value: "a", label: "Alpha" }, { value: "b" }]);
+
+    const plain = JSON.parse(JSON.stringify(new PluginSetting("n", "N", "number")));
+    expect("options" in plain).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 // Type-check everything that ships or is meant to keep working — src, the
-// tests, and the runnable examples.
+// tests, the runnable examples and the e2e driver.
 //
 // The build config (tsconfig.json) deliberately excludes tests and examples:
 // it emits `dist` with `rootDir: src`, and an example under the root would
@@ -13,6 +13,6 @@
     "noEmit": true,
     "rootDir": "."
   },
-  "include": ["src/**/*", "tests/**/*", "examples/**/*"],
+  "include": ["src/**/*", "tests/**/*", "examples/**/*", "e2e/**/*"],
   "exclude": ["dist", "node_modules"]
 }

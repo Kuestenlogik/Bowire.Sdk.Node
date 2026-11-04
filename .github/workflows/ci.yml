@@ -106,6 +106,12 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "EchoService"
 
+      # The CLI has no workspace, so it never sends plugin settings (#693).
+      # The workbench does: e2e/host.ts starts it headless and goes through
+      # the endpoints its Settings dialog uses — declaration in, value out.
+      - name: Settings through the workbench
+        run: npx tsx e2e/host.ts --plugin-dir "$PWD/plugins" --work-dir "$RUNNER_TEMP/bowire-e2e"
+
   gate:
     name: gate
     needs: [build, e2e]

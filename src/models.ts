@@ -228,12 +228,26 @@ export class InvokeResult {
   }
 }
 
+// One choice of a `select` setting. `label` is what the operator reads;
+// the host falls back to `value` without one.
+export interface SettingOption {
+  value: string;
+  label?: string;
+}
+
+// A setting the plugin declares in its `initialize` reply (#693). The host
+// renders it in the plugin's section of the workbench's Settings dialog and
+// sends the value back on every call — read it through `SettingValues`.
+//
+// `type` is what the host renders: "bool", "string", "number" or "select".
+// A `select` needs `options`; without them it has nothing to pick from.
 export class PluginSetting {
   key: string;
   label: string;
   type: string;
   defaultValue?: unknown;
   description?: string;
+  options?: SettingOption[];
   required: boolean;
 
   constructor(key: string, label: string, type: string) {
@@ -253,6 +267,11 @@ export class PluginSetting {
     return this;
   }
 
+  withOptions(options: Iterable<SettingOption>): this {
+    this.options = [...(this.options ?? []), ...options];
+    return this;
+  }
+
   makeRequired(): this {
     this.required = true;
     return this;
@@ -267,6 +286,11 @@ export class PluginSetting {
     };
     if (this.defaultValue !== undefined) out.defaultValue = this.defaultValue;
     if (this.description !== undefined) out.description = this.description;
+    if (this.options !== undefined) {
+      out.options = this.options.map((o) =>
+        o.label === undefined ? { value: o.value } : { value: o.value, label: o.label },
+      );
+    }
     return out;
   }
 }

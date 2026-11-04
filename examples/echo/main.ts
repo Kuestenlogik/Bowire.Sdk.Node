@@ -12,11 +12,41 @@ import {
   InvokeResult,
   MessageInfo,
   MethodInfo,
+  PluginSetting,
   ServiceInfo,
   run,
   runHttp,
   type Metadata,
+  type SettingValues,
 } from "../../src/index.js";
+
+// Declared once, read on every call. The host renders these in the Echo
+// section of the workbench's Settings dialog and sends back only the ones an
+// operator changed; `SettingValues` resolves the rest to the defaults here.
+const SETTINGS = [
+  new PluginSetting("transform", "Transform", "select")
+    .withDescription("What Echo does to the text before sending it back")
+    .withDefault("none")
+    .withOptions([
+      { value: "none", label: "As sent" },
+      { value: "upper", label: "Upper case" },
+      { value: "lower", label: "Lower case" },
+    ]),
+  new PluginSetting("ticks", "Ticks", "number")
+    .withDescription("How many events Watch streams")
+    .withDefault(3),
+];
+
+function transform(text: string, settings: SettingValues): string {
+  switch (settings.string("transform")) {
+    case "upper":
+      return text.toUpperCase();
+    case "lower":
+      return text.toLowerCase();
+    default:
+      return text;
+  }
+}
 
 class EchoPlugin extends BowirePluginBase {
   override id(): string {
@@ -24,6 +54,9 @@ class EchoPlugin extends BowirePluginBase {
   }
   override name(): string {
     return "Echo";
+  }
+  override settings(): PluginSetting[] {
+    return SETTINGS;
   }
   override discover(): ServiceInfo[] {
     return [
@@ -53,9 +86,10 @@ class EchoPlugin extends BowirePluginBase {
     jsonMessages: string[],
     _showInternalServices: boolean,
     _metadata: Metadata,
+    settings: SettingValues,
   ): InvokeResult {
     const first = jsonMessages[0] ?? "";
-    return InvokeResult.ok(JSON.stringify({ echoed: first }));
+    return InvokeResult.ok(JSON.stringify({ echoed: transform(first, settings) }));
   }
   override async *invokeStream(
     _serverUrl: string,
@@ -63,8 +97,10 @@ class EchoPlugin extends BowirePluginBase {
     _method: string,
     _jsonMessages: string[],
     _metadata: Metadata,
+    settings: SettingValues,
   ): AsyncIterable<string> {
-    for (let i = 0; i < 3; i++) {
+    const ticks = settings.number("ticks");
+    for (let i = 0; i < ticks; i++) {
       yield JSON.stringify({ tick: i });
     }
   }

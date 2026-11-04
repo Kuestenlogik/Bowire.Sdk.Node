@@ -60,6 +60,60 @@ await run(new EchoPlugin());
 `invokeStream`, `openChannel`, `settings`, and `shutdown` ship with
 no-op defaults. Override only what you need.
 
+## Settings
+
+A setting has two halves: the plugin declares it, and the host sends its
+value back with every call.
+
+**Declare** it in `settings()`. The host renders each entry in the
+plugin's section of the workbench's Settings dialog. `type` is `"bool"`,
+`"string"`, `"number"` or `"select"`; a `select` needs `options`.
+
+```ts
+import { PluginSetting } from "@bowire/plugin";
+
+settings() {
+  return [
+    new PluginSetting("probeWindow", "Probe window", "number").withDefault(5),
+    new PluginSetting("mode", "Mode", "select")
+      .withDefault("fast")
+      .withOptions([
+        { value: "fast", label: "Fast" },
+        { value: "safe", label: "Safe" },
+      ]),
+  ];
+}
+```
+
+**Read** it from the `settings` argument — the last parameter of
+`discover`, `invoke`, `invokeStream` and `openChannel`:
+
+```ts
+invoke(serverUrl, service, method, jsonMessages, showInternalServices,
+       metadata, settings: SettingValues) {
+  const window = settings.number("probeWindow"); // 5 until someone sets it
+  const mode = settings.string("mode");
+  // ...
+}
+```
+
+The values arrive fresh with each call, so a changed setting takes effect
+without restarting the sidecar. On the wire every value is a string, and
+only keys someone actually set travel. `SettingValues` handles both:
+
+- `string(key)`, `bool(key)`, `number(key)` parse the text into the
+  requested type, and fall back to the declared `defaultValue` when the
+  key is absent or does not parse. `bool` reads `true` / `false` (any
+  case) and `1` / `0`.
+- An optional second argument is the fallback for a setting declared
+  without a default. With neither, the accessor throws — that is a bug in
+  the plugin, not in the operator's input.
+- `has(key)` and `raw(key)` tell whether the host sent a value and what
+  text it was.
+
+Env vars are not the channel for settings: `envPrefix` forwards the
+host's environment once, at spawn.
+
 ## Transports
 
 Pick the wire your sidecar runs over. Both routes go through the

@@ -3,6 +3,7 @@ import type {
   PluginSetting,
   ServiceInfo,
 } from "./models.js";
+import type { SettingValues } from "./settings.js";
 
 // Streaming response yielded by `invokeStream`. The runtime wraps
 // each yielded payload as a `$/stream/data` notification.
@@ -33,6 +34,10 @@ export interface ChannelHandle {
 // (see the Bowire repo's docs/architecture/sidecar-plugins.md). They used
 // to read `endpoint` / `refresh` / `body` here, which is why every
 // discover call reached a plugin with an empty URL.
+//
+// `settings` is the last argument of every call the host makes: the values
+// behind what `settings()` declared (#693), fresh per call. A plugin that
+// declares none can leave the parameter off.
 export interface BowirePlugin {
   id(): string;
   name(): string;
@@ -44,6 +49,7 @@ export interface BowirePlugin {
   discover(
     serverUrl: string,
     showInternalServices: boolean,
+    settings: SettingValues,
   ): Promise<ServiceInfo[]> | ServiceInfo[];
 
   invoke(
@@ -53,6 +59,7 @@ export interface BowirePlugin {
     jsonMessages: string[],
     showInternalServices: boolean,
     metadata: Metadata,
+    settings: SettingValues,
   ): Promise<InvokeResult> | InvokeResult;
 
   invokeStream?(
@@ -61,6 +68,7 @@ export interface BowirePlugin {
     method: string,
     jsonMessages: string[],
     metadata: Metadata,
+    settings: SettingValues,
   ): AsyncIterable<InvokeStreamChunk>;
 
   openChannel?(
@@ -69,6 +77,7 @@ export interface BowirePlugin {
     method: string,
     metadata: Metadata,
     channel: ChannelHandle,
+    settings: SettingValues,
   ): Promise<void> | void;
 
   settings?(): Promise<PluginSetting[]> | PluginSetting[];
@@ -86,6 +95,7 @@ export abstract class BowirePluginBase implements BowirePlugin {
   abstract discover(
     serverUrl: string,
     showInternalServices: boolean,
+    settings: SettingValues,
   ): Promise<ServiceInfo[]> | ServiceInfo[];
   abstract invoke(
     serverUrl: string,
@@ -94,6 +104,7 @@ export abstract class BowirePluginBase implements BowirePlugin {
     jsonMessages: string[],
     showInternalServices: boolean,
     metadata: Metadata,
+    settings: SettingValues,
   ): Promise<InvokeResult> | InvokeResult;
 
   async *invokeStream(
@@ -102,6 +113,7 @@ export abstract class BowirePluginBase implements BowirePlugin {
     _method: string,
     _jsonMessages: string[],
     _metadata: Metadata,
+    _settings: SettingValues,
   ): AsyncIterable<InvokeStreamChunk> {
     // empty stream by default
   }
@@ -112,6 +124,7 @@ export abstract class BowirePluginBase implements BowirePlugin {
     _method: string,
     _metadata: Metadata,
     _channel: ChannelHandle,
+    _settings: SettingValues,
   ): Promise<void> {
     // no-op; subclasses override for duplex protocols
   }

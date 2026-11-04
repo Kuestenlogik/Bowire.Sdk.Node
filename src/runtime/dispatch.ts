@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BowirePlugin, Metadata } from "../plugin.js";
+import { SettingValues } from "../settings.js";
 import {
   ERR_INTERNAL,
   ERR_INVALID_PARAMS,
@@ -40,11 +41,13 @@ interface InvokeParams {
   showInternalServices?: boolean;
   metadata?: Metadata;
   streamId?: string;
+  settings?: unknown;
 }
 
 interface DiscoverParams {
   serverUrl?: string;
   showInternalServices?: boolean;
+  settings?: unknown;
 }
 
 // The sidecar wire-contract version this SDK speaks (#416). A sidecar that
@@ -107,6 +110,7 @@ export async function dispatch(
         const services = await plugin.discover(
           dp.serverUrl ?? "",
           dp.showInternalServices ?? false,
+          await settingValues(plugin, dp.settings),
         );
         // A bare array: the host reads anything else as "no services" and
         // moves on to the next plugin, silently.
@@ -122,6 +126,7 @@ export async function dispatch(
           p.jsonMessages ?? [],
           p.showInternalServices ?? false,
           p.metadata ?? {},
+          await settingValues(plugin, p.settings),
         );
         return { kind: "reply", response: ok(id, result) };
       }
@@ -145,6 +150,7 @@ export async function dispatch(
           p.method ?? "",
           p.jsonMessages ?? [],
           p.metadata ?? {},
+          await settingValues(plugin, p.settings),
         );
         return {
           kind: "stream",
@@ -165,6 +171,18 @@ export async function dispatch(
     const code = isInvalidParams(e) ? ERR_INVALID_PARAMS : ERR_INTERNAL;
     return { kind: "reply", response: err(id, code, message) };
   }
+}
+
+// The values the host sent with this call (#693), read against what the
+// plugin declares so an absent key resolves to the declared default. The
+// declarations are asked for per call rather than captured at initialize: a
+// plugin is free to compute them, and the cost is one method call.
+async function settingValues(
+  plugin: BowirePlugin,
+  raw: unknown,
+): Promise<SettingValues> {
+  const declared = plugin.settings ? await plugin.settings() : [];
+  return SettingValues.fromWire(raw, declared);
 }
 
 function isInvalidParams(e: unknown): boolean {
