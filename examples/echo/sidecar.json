@@ -4,7 +4,8 @@
     "id": "echo",
     "name": "Echo (Node)"
   },
-  "executable": "run.sh",
+  "executable": "node",
+  "args": ["examples/echo/main.js"],
   "transport": "stdio",
   "envPrefix": "BOWIRE_",
   "version": "0.1.0"

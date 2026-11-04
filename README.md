@@ -156,6 +156,31 @@ Handlers run on the dispatch loop: a handler that waits for a later frame
 on the same channel waits forever. Keep them to reacting to the frame they
 got.
 
+## Ship it as a sidecar
+
+A Node sidecar is a zip with `sidecar.json` at its root, the compiled
+plugin and everything it imports — the host runs it from the plugin
+directory with no `node_modules` to fall back on. The manifest names the
+interpreter and passes the entry point as an argument:
+
+```json
+{
+  "packageId": "Acme.Bowire.Sidecar.Echo",
+  "protocol": { "id": "echo", "name": "Echo" },
+  "executable": "node",
+  "args": ["main.js"],
+  "transport": "stdio"
+}
+```
+
+The host looks for `executable` in the plugin directory first and, for a
+bare name like `node`, then on `PATH` (applying `PATHEXT` on Windows), so
+the same manifest runs on Linux, macOS and Windows. That needs Bowire 2.8
+or newer. `args` paths are relative to the plugin directory, which is the
+process's working directory. [`examples/echo`](examples/echo) ships this
+way; the CI e2e job packages it, installs it into the released host and
+drives it on Linux and Windows.
+
 ## Transports
 
 Pick the wire your sidecar runs over. Both routes go through the
