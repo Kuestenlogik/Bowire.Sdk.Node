@@ -29,6 +29,9 @@ export interface ErrorObject {
 export const ERR_METHOD_NOT_FOUND = -32601;
 export const ERR_INVALID_PARAMS = -32602;
 export const ERR_INTERNAL = -32603;
+// Server-defined range. A `channel.send` / `channel.close` for a channel
+// that is closed or was never opened; the host reads it as SendAsync false.
+export const ERR_CHANNEL_CLOSED = -32001;
 
 export function ok(id: string | number | null, result: unknown): Response {
   return { jsonrpc: "2.0", id, result };

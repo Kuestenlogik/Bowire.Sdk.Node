@@ -10,7 +10,14 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { getJson, sendJson, startWorkbench, type Workbench } from "./workbench.js";
+import {
+  getJson,
+  readSse,
+  sendJson,
+  startWorkbench,
+  type SseEvent,
+  type Workbench,
+} from "./workbench.js";
 
 const PROTOCOL = "echo";
 const SERVICE = "EchoService";
@@ -61,6 +68,60 @@ class Session {
   setSetting(key: string, value: string | null): Promise<unknown> {
     return sendJson("PUT", this.url(`/api/plugins/settings/${PROTOCOL}/${key}`), { value });
   }
+
+  async openChat(): Promise<Chat> {
+    const opened = await sendJson<{ channelId: string }>("POST", this.url("/api/channel/open"), {
+      protocol: PROTOCOL,
+      service: SERVICE,
+      method: "Chat",
+    });
+    return new Chat(this, opened.channelId);
+  }
+}
+
+// One channel as the workbench drives it: frames in over POST .../send,
+// frames out over the SSE stream at .../responses, which ends with a `done`
+// event once the sidecar says $/channel/closed.
+class Chat {
+  readonly events: SseEvent[] = [];
+  private ended: Promise<void> | undefined;
+
+  constructor(
+    private readonly session: Session,
+    readonly id: string,
+  ) {}
+
+  // Subscribe to what the plugin sends. The host subscribed to the
+  // channel's id before it opened it, so nothing sent before this is lost.
+  async listen(): Promise<void> {
+    const res = await fetch(this.session.url(`/api/channel/${this.id}/responses`));
+    this.ended = readSse(res, (e) => this.events.push(e));
+  }
+
+  send(message: string): Promise<Response> {
+    return fetch(this.session.url(`/api/channel/${this.id}/send`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+  }
+
+  close(): Promise<unknown> {
+    return sendJson("POST", this.session.url(`/api/channel/${this.id}/close`), {});
+  }
+
+  // Resolves when the host ends the response stream — the signal that the
+  // channel is closed on both sides.
+  async done(): Promise<{ echoed: string[]; done: number }> {
+    assert(this.ended, "listen() first");
+    await this.ended;
+    return {
+      echoed: this.events
+        .filter((e) => e.event === "message")
+        .map((e) => (JSON.parse((JSON.parse(e.data) as { data: string }).data) as { echoed: string }).echoed),
+      done: this.events.filter((e) => e.event === "done").length,
+    };
+  }
 }
 
 // #693, both halves: the declaration reaches the Settings dialog (with the
@@ -85,6 +146,42 @@ async function checkSettings(s: Session): Promise<void> {
   console.log("settings: values reach the plugin per call");
 }
 
+// #4: a duplex method end to end, closed once from each side. The setting is
+// set first, so this also proves openChannel receives the values.
+async function checkChannels(s: Session): Promise<void> {
+  await s.setSetting("transform", "upper");
+  try {
+    const byHost = await s.openChat();
+    await byHost.listen();
+    for (const text of ["hello", "again"]) {
+      const sent = await byHost.send(text);
+      assert(sent.ok, `send accepted (${sent.status})`);
+      assert(((await sent.json()) as { sent: boolean }).sent, "the sidecar accepted the frame");
+    }
+    await byHost.close();
+    const hostSide = await byHost.done();
+    assert(
+      hostSide.echoed.join(",") === "HELLO,AGAIN",
+      `frames came back in order, transformed: ${hostSide.echoed.join(",")}`,
+    );
+    assert(hostSide.done === 1, "closed from the host: the stream ended once");
+    console.log("channels: open, send both ways, close from the host");
+
+    const byPlugin = await s.openChat();
+    await byPlugin.listen();
+    await byPlugin.send("ping");
+    await byPlugin.send(JSON.stringify({ close: true }));
+    const pluginSide = await byPlugin.done();
+    assert(pluginSide.echoed.join(",") === "PING", "the frame before the close came back");
+    assert(pluginSide.done === 1, "closed from the plugin: the stream ended once");
+    const late = await byPlugin.send("anyone?");
+    assert(!late.ok, `a send after the plugin closed is refused (${late.status})`);
+    console.log("channels: closed from the plugin, a later send refused");
+  } finally {
+    await s.setSetting("transform", null);
+  }
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -104,6 +201,7 @@ async function main(): Promise<void> {
   try {
     const session = new Session(workbench, storageRoot);
     await checkSettings(session);
+    await checkChannels(session);
   } catch (e) {
     console.error(`host log: ${workbench.logFile}`);
     throw e;

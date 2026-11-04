@@ -106,10 +106,12 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "EchoService"
 
-      # The CLI has no workspace, so it never sends plugin settings (#693).
-      # The workbench does: e2e/host.ts starts it headless and goes through
-      # the endpoints its Settings dialog uses — declaration in, value out.
-      - name: Settings through the workbench
+      # The CLI has no workspace, so it never sends plugin settings (#693),
+      # and no command of it drives a duplex channel (#4). The workbench does
+      # both: e2e/host.ts starts it headless and goes through the endpoints
+      # its UI uses — a setting declared and read back, and the example's
+      # Chat method opened, sent over both ways and closed from each side.
+      - name: Settings and channels through the workbench
         run: npx tsx e2e/host.ts --plugin-dir "$PWD/plugins" --work-dir "$RUNNER_TEMP/bowire-e2e"
 
   gate:

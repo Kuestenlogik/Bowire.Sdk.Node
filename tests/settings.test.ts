@@ -12,7 +12,13 @@ import {
   SettingValues,
   type Metadata,
 } from "../src/index.js";
-import { dispatch } from "../src/runtime/dispatch.js";
+import { ChannelRegistry } from "../src/runtime/channels.js";
+import { dispatch as route } from "../src/runtime/dispatch.js";
+import type { Request } from "../src/runtime/jsonrpc.js";
+
+// None of these calls opens a channel, so frames have nowhere to go.
+const dispatch = (plugin: Parameters<typeof route>[0], req: Request) =>
+  route(plugin, req, new ChannelRegistry(() => {}));
 
 const declared = [
   new PluginSetting("probeWindow", "Probe window", "number").withDefault(5),

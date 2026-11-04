@@ -57,8 +57,9 @@ await run(new EchoPlugin());
 ```
 
 `BowirePluginBase` requires `id`, `name`, `discover`, and `invoke`;
-`invokeStream`, `openChannel`, `settings`, and `shutdown` ship with
-no-op defaults. Override only what you need.
+`invokeStream`, `settings`, and `shutdown` ship with no-op defaults.
+`openChannel` has none: implement it to serve duplex methods (see
+[Channels](#channels)). Override only what you need.
 
 ## Settings
 
@@ -114,6 +115,47 @@ only keys someone actually set travel. `SettingValues` handles both:
 Env vars are not the channel for settings: `envPrefix` forwards the
 host's environment once, at spawn.
 
+## Channels
+
+A duplex method (`MethodInfo.bidirectional`) is served by `openChannel`.
+The host opens the channel, sends frames over it, and either side closes
+it. The plugin gets a `ChannelHandle`:
+
+```ts
+openChannel(serverUrl, service, method, metadata, channel: ChannelHandle,
+            settings: SettingValues) {
+  channel.onMessage(async (message) => {
+    if (message === '"bye"') return channel.close();
+    channel.send(JSON.stringify({ echoed: message }));
+  });
+  channel.onClose(() => {
+    // release whatever the channel holds
+  });
+}
+```
+
+- `onMessage` handlers get every frame the host sends, in order. Register
+  them inside `openChannel`; the host sends nothing before the open is
+  answered. A handler that throws makes that send fail on the host side.
+- `send` pushes a frame to the host. It returns `false` once the channel
+  is closed.
+- `close` ends the channel from the plugin's side. A close from the host
+  ends it the same way.
+- `onClose` handlers run exactly once, whichever side closed, before the
+  host is told — they may still `send` a last frame.
+- `channel.id` is the id the host minted. Several channels can be open
+  at once; each handle only ever sees its own frames.
+- `shutdown`, and a host that goes away (stdin closes), close every open
+  channel.
+
+`initialize` reports `capabilities.channels: true` only for a plugin that
+implements `openChannel`, so the host does not offer a channel the plugin
+cannot serve.
+
+Handlers run on the dispatch loop: a handler that waits for a later frame
+on the same channel waits forever. Keep them to reacting to the frame they
+got.
+
 ## Transports
 
 Pick the wire your sidecar runs over. Both routes go through the
@@ -142,7 +184,8 @@ console.log(`listening on port ${handle.port}`);
 
 Streamable-HTTP variant — `POST /` lands JSON-RPC requests, `GET /`
 is a long-lived SSE stream the runtime pushes server notifications
-onto (`$/stream/data`, `$/stream/end`). Fits hosted /
+onto (`$/stream/data`, `$/stream/end`, `$/channel/data`,
+`$/channel/closed`). Fits hosted /
 multi-tenant deployments where one sidecar serves many workbenches.
 
 ## Wire model
@@ -162,6 +205,21 @@ const svc = new ServiceInfo("Demo")
       .withSummary("Watch a topic"),
   ]);
 ```
+
+## Breaking changes
+
+Pre-1.0, changes land in one cut. Since 0.2.0:
+
+- `ChannelHandle` is now what the host routes to: `send` returns a
+  boolean, and `id`, `closed` and `close()` are new.
+- `BowirePluginBase` no longer ships a no-op `openChannel`. The no-op
+  would have made `capabilities.channels` claim duplex support for every
+  plugin. Implement it, or leave it out.
+- `dispatch(plugin, request, channels)` takes the runtime's
+  `ChannelRegistry` as a third argument. Only code that drives `dispatch`
+  directly, rather than through `run` / `runHttp`, is affected.
+- Every plugin call gains a trailing `settings: SettingValues` argument.
+  Existing implementations that leave it off still compile.
 
 ## Related
 

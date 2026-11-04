@@ -13,12 +13,26 @@ export type InvokeStreamChunk = string;
 // mirrors the wire shape.
 export type Metadata = Record<string, string>;
 
-// Channel side passed to `openChannel` — the plugin can call
-// `send` to push messages to the workbench. `onMessage` is called
-// for every message the workbench pushes back. Best-effort:
-// duplex isn't required, default impl is a no-op.
+// The plugin's end of a duplex channel, passed to `openChannel` (#4).
+//
+// - `send` pushes a frame to the host as `$/channel/data`. It returns false
+//   once the channel is closed and the host no longer reads.
+// - `onMessage` handlers receive every frame the host sends
+//   (`channel.send`), in order. Register them inside `openChannel`: the host
+//   sends nothing before the open is answered.
+// - `close` ends the channel from the plugin's side; the host's read stream
+//   ends with it.
+// - `onClose` handlers run exactly once when the channel ends, whichever
+//   side closed it, before the host is told. They may still `send` a last
+//   frame.
+//
+// `id` is the id the host minted for the channel.
 export interface ChannelHandle {
-  send(message: string): void;
+  readonly id: string;
+  // True once either side has started closing.
+  readonly closed: boolean;
+  send(message: string): boolean;
+  close(): Promise<void>;
   onMessage(handler: (message: string) => void | Promise<void>): void;
   onClose(handler: () => void | Promise<void>): void;
 }
@@ -86,9 +100,13 @@ export interface BowirePlugin {
 }
 
 // Convenience base — subclass and override only what you need.
-// Default `invokeStream` is an empty stream; default `openChannel`
-// closes immediately; default `settings` returns `[]`; default
-// `shutdown` is a no-op. Matches the Python/Rust SDK defaults.
+// Default `invokeStream` is an empty stream; default `settings` returns
+// `[]`; default `shutdown` is a no-op. Matches the Python/Rust SDK
+// defaults.
+//
+// `openChannel` has no default on purpose: whether a plugin has one is what
+// `capabilities.channels` reports, and a no-op default would claim duplex
+// support for every subclass.
 export abstract class BowirePluginBase implements BowirePlugin {
   abstract id(): string;
   abstract name(): string;
@@ -118,16 +136,17 @@ export abstract class BowirePluginBase implements BowirePlugin {
     // empty stream by default
   }
 
-  async openChannel(
-    _serverUrl: string,
-    _service: string,
-    _method: string,
-    _metadata: Metadata,
-    _channel: ChannelHandle,
-    _settings: SettingValues,
-  ): Promise<void> {
-    // no-op; subclasses override for duplex protocols
-  }
+  // Declared, not implemented — see above. Override it to serve duplex
+  // methods; the host then routes channel.send / channel.close to the
+  // handle it is given.
+  openChannel?(
+    serverUrl: string,
+    service: string,
+    method: string,
+    metadata: Metadata,
+    channel: ChannelHandle,
+    settings: SettingValues,
+  ): Promise<void> | void;
 
   // The host falls back to a generic plug icon on an empty string, so a
   // plugin that does not care about its tab icon overrides nothing.

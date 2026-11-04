@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import type { BowirePlugin } from "../plugin.js";
+import { ChannelRegistry } from "./channels.js";
 import { dispatch } from "./dispatch.js";
 import type { Notification, Request, Response } from "./jsonrpc.js";
 
@@ -20,6 +21,7 @@ export async function run(plugin: BowirePlugin): Promise<void> {
     process.stdout.write(`${JSON.stringify(frame)}\n`);
   };
 
+  const channels = new ChannelRegistry(writeFrame);
   let stop = false;
 
   for await (const line of rl) {
@@ -34,7 +36,7 @@ export async function run(plugin: BowirePlugin): Promise<void> {
       continue;
     }
 
-    const outcome = await dispatch(plugin, req);
+    const outcome = await dispatch(plugin, req, channels);
 
     if (outcome.kind === "reply") {
       writeFrame(outcome.response);
@@ -49,6 +51,9 @@ export async function run(plugin: BowirePlugin): Promise<void> {
     if (stop) break;
   }
 
+  // stdin closed without a shutdown: the host is gone. Run the channels'
+  // onClose handlers anyway so the plugin can release what they hold.
+  await channels.closeAll();
   rl.close();
 }
 

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BowirePlugin } from "../plugin.js";
+import { ChannelRegistry } from "./channels.js";
 import { dispatch } from "./dispatch.js";
 import type { Notification, Request } from "./jsonrpc.js";
 
@@ -17,7 +18,8 @@ export interface HttpRuntimeHandle {
 //   `dispatch`, returns the response (or stream ack) in the body.
 // - `GET  /` returns a long-lived Server-Sent-Events stream the
 //   runtime pushes server notifications onto
-//   (`$/stream/data` / `$/stream/end`).
+//   (`$/stream/data` / `$/stream/end`, `$/channel/data` /
+//   `$/channel/closed`).
 //
 // Same JSON-RPC semantics as the stdio runtime — both go through
 // the shared `dispatch` helper.
@@ -39,6 +41,8 @@ export async function runHttp(
     }
   };
 
+  const channels = new ChannelRegistry(broadcast);
+
   const server = createServer(async (req, res) => {
     if (!req.url) {
       res.statusCode = 400;
@@ -52,7 +56,7 @@ export async function runHttp(
     }
 
     if (req.method === "POST") {
-      await handlePost(req, res, plugin, broadcast);
+      await handlePost(req, res, plugin, channels, broadcast);
       return;
     }
 
@@ -74,6 +78,7 @@ export async function runHttp(
   return {
     port: addr.port,
     async close(): Promise<void> {
+      await channels.closeAll();
       for (const res of subscribers) {
         try {
           res.end();
@@ -110,6 +115,7 @@ async function handlePost(
   req: IncomingMessage,
   res: ServerResponse,
   plugin: BowirePlugin,
+  channels: ChannelRegistry,
   broadcast: (n: Notification) => void,
 ): Promise<void> {
   const chunks: Buffer[] = [];
@@ -126,7 +132,7 @@ async function handlePost(
     return;
   }
 
-  const outcome = await dispatch(plugin, parsed);
+  const outcome = await dispatch(plugin, parsed, channels);
 
   res.statusCode = 200;
   res.setHeader("Content-Type", "application/json");

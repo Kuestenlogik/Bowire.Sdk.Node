@@ -12,7 +12,13 @@ import {
   SIDECAR_PROTOCOL_VERSION,
   type Metadata,
 } from "../src/index.js";
-import { dispatch } from "../src/runtime/dispatch.js";
+import { ChannelRegistry } from "../src/runtime/channels.js";
+import { dispatch as route } from "../src/runtime/dispatch.js";
+import type { Request } from "../src/runtime/jsonrpc.js";
+
+// None of these calls opens a channel, so frames have nowhere to go.
+const dispatch = (plugin: Parameters<typeof route>[0], req: Request) =>
+  route(plugin, req, new ChannelRegistry(() => {}));
 
 class TestPlugin extends BowirePluginBase {
   shutdownCalled = false;
@@ -78,9 +84,9 @@ describe("dispatch", () => {
   it("initialize advertises the contract version and capabilities", async () => {
     // #416. Without these the host logs "treating it as legacy sidecar
     // contract v1" on every boot and cannot refuse an incompatible sidecar
-    // at the handshake. `channels` is false because this dispatcher has no
-    // openChannel case — saying true would earn a method-not-found per
-    // duplex method an operator opens.
+    // at the handshake. `channels` is false because this plugin implements
+    // no openChannel — saying true would earn a method-not-found per duplex
+    // method an operator opens.
     const r = await dispatch(new TestPlugin(), {
       jsonrpc: "2.0",
       id: 1,

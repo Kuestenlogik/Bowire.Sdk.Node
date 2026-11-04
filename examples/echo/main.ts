@@ -16,6 +16,7 @@ import {
   ServiceInfo,
   run,
   runHttp,
+  type ChannelHandle,
   type Metadata,
   type SettingValues,
 } from "../../src/index.js";
@@ -76,6 +77,9 @@ class EchoPlugin extends BowirePluginBase {
             )
             .withSummary("Echo a message back"),
           MethodInfo.serverStreaming("Watch").withSummary("Stream tick events"),
+          MethodInfo.bidirectional("Chat").withSummary(
+            "Echo every frame back; a frame of {\"close\":true} ends the channel",
+          ),
         ]),
     ];
   }
@@ -103,6 +107,37 @@ class EchoPlugin extends BowirePluginBase {
     for (let i = 0; i < ticks; i++) {
       yield JSON.stringify({ tick: i });
     }
+  }
+  override openChannel(
+    _serverUrl: string,
+    _service: string,
+    _method: string,
+    _metadata: Metadata,
+    channel: ChannelHandle,
+    settings: SettingValues,
+  ): void {
+    chat(channel, settings);
+  }
+}
+
+// Duplex: the host opens a channel, then sends frames over it until one side
+// closes. The handle is all the plugin keeps — no ids to track, the SDK
+// routes the host's frames to the right one.
+function chat(channel: ChannelHandle, settings: SettingValues): void {
+  channel.onMessage(async (message) => {
+    if (wantsClose(message)) {
+      await channel.close();
+      return;
+    }
+    channel.send(JSON.stringify({ echoed: transform(message, settings) }));
+  });
+}
+
+function wantsClose(message: string): boolean {
+  try {
+    return (JSON.parse(message) as { close?: unknown }).close === true;
+  } catch {
+    return false;
   }
 }
 

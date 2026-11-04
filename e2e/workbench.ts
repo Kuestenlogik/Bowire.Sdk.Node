@@ -99,3 +99,34 @@ async function readJson<T>(res: Response, method: string, url: string): Promise<
   if (!res.ok) throw new Error(`${method} ${url} -> ${res.status}: ${text}`);
   return JSON.parse(text) as T;
 }
+
+export interface SseEvent {
+  event: string;
+  data: string;
+}
+
+// Read a Server-Sent-Events response until the server ends it, handing each
+// event to `onEvent` as it arrives.
+export async function readSse(
+  res: Response,
+  onEvent: (e: SseEvent) => void,
+): Promise<void> {
+  if (!res.ok || !res.body) throw new Error(`SSE ${res.url} -> ${res.status}`);
+  const decoder = new TextDecoder();
+  let buf = "";
+  for await (const chunk of res.body) {
+    buf += decoder.decode(chunk as Uint8Array, { stream: true }).replace(/\r\n/g, "\n");
+    let end: number;
+    while ((end = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, end);
+      buf = buf.slice(end + 2);
+      let event = "message";
+      const data: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+      }
+      if (data.length > 0) onEvent({ event, data: data.join("\n") });
+    }
+  }
+}
