@@ -57,9 +57,10 @@ await run(new EchoPlugin());
 ```
 
 `BowirePluginBase` requires `id`, `name`, `discover`, and `invoke`;
-`invokeStream`, `settings`, and `shutdown` ship with no-op defaults.
-`openChannel` has none: implement it to serve duplex methods (see
-[Channels](#channels)). Override only what you need.
+`settings` and `shutdown` ship with no-op defaults. `invokeStream` and
+`openChannel` have none: implement them to serve server-streaming and duplex
+methods (see [Channels](#channels)), and the handshake reports exactly what
+you implemented. Override only what you need.
 
 ## Settings
 
@@ -272,6 +273,10 @@ const svc = new ServiceInfo("Demo")
 
 Pre-1.0, changes land in one cut. Since 0.2.0:
 
+- `BowirePluginBase` no longer ships an empty `invokeStream` (#15). The
+  default made `capabilities.invokeStream` claim streaming for every plugin,
+  which then answered the host with a stream of nothing. Implement it, or
+  leave it out.
 - `ChannelHandle` is now what the host routes to: `send` returns a
   boolean, and `id`, `closed` and `close()` are new.
 - `BowirePluginBase` no longer ships a no-op `openChannel`. The no-op

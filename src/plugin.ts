@@ -106,13 +106,11 @@ export interface BowirePlugin {
 }
 
 // Convenience base — subclass and override only what you need.
-// Default `invokeStream` is an empty stream; default `settings` returns
-// `[]`; default `shutdown` is a no-op. Matches the Python/Rust SDK
-// defaults.
+// Default `settings` returns `[]`; default `shutdown` is a no-op.
 //
-// `openChannel` has no default on purpose: whether a plugin has one is what
-// `capabilities.channels` reports, and a no-op default would claim duplex
-// support for every subclass.
+// `invokeStream` and `openChannel` have no default on purpose: whether a
+// plugin has one is what `capabilities.invokeStream` / `capabilities.channels`
+// report, and a no-op default would claim support for every subclass.
 export abstract class BowirePluginBase implements BowirePlugin {
   abstract id(): string;
   abstract name(): string;
@@ -131,16 +129,18 @@ export abstract class BowirePluginBase implements BowirePlugin {
     settings: SettingValues,
   ): Promise<InvokeResult> | InvokeResult;
 
-  async *invokeStream(
-    _serverUrl: string,
-    _service: string,
-    _method: string,
-    _jsonMessages: string[],
-    _metadata: Metadata,
-    _settings: SettingValues,
-  ): AsyncIterable<InvokeStreamChunk> {
-    // empty stream by default
-  }
+  // Declared, not implemented (#15), like openChannel below: whether a
+  // plugin has one is what `capabilities.invokeStream` reports, and an empty
+  // default stream claimed streaming for every subclass. Override it to serve
+  // server-streaming methods.
+  invokeStream?(
+    serverUrl: string,
+    service: string,
+    method: string,
+    jsonMessages: string[],
+    metadata: Metadata,
+    settings: SettingValues,
+  ): AsyncIterable<InvokeStreamChunk>;
 
   // Declared, not implemented — see above. Override it to serve duplex
   // methods; the host then routes channel.send / channel.close to the

@@ -106,6 +106,38 @@ describe("dispatch", () => {
     });
   });
 
+  it("a plugin without invokeStream says so, and its invokeStream is refused", async () => {
+    // #15. BowirePluginBase used to ship an empty invokeStream, so every
+    // subclass claimed streaming and answered with a stream of nothing.
+    class NoStream extends BowirePluginBase {
+      override id(): string {
+        return "nostream";
+      }
+      override name(): string {
+        return "No stream";
+      }
+      override discover(): ServiceInfo[] {
+        return [];
+      }
+      override invoke(): InvokeResult {
+        return InvokeResult.ok("{}");
+      }
+    }
+    const init = await dispatch(new NoStream(), { jsonrpc: "2.0", id: 1, method: "initialize" });
+    if (init.kind !== "reply") throw new Error();
+    const caps = (init.response.result as { capabilities: Record<string, boolean> }).capabilities;
+    expect(caps.invokeStream).toBe(false);
+
+    const stream = await dispatch(new NoStream(), {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "invokeStream",
+      params: { streamId: "s1" },
+    });
+    if (stream.kind !== "reply") throw new Error(`want a reply, got ${stream.kind}`);
+    expect(stream.response.error?.message).toContain("invokeStream not supported");
+  });
+
   it("ping returns the bare pong string the contract asks for", async () => {
     const r = await dispatch(new TestPlugin(), {
       jsonrpc: "2.0",
