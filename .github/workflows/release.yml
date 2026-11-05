@@ -1,0 +1,98 @@
+name: Release
+
+# Publishes @bowire/plugin to npm when a version tag is pushed, the way
+# Kuestenlogik/Bowire publishes to nuget.org and the Rust SDK to crates.io:
+# through Trusted Publishing, so no long-lived registry token is stored. With
+# npm 11.5.1 or later and the job's `id-token: write`, `npm publish` exchanges
+# the GitHub OIDC token for a short-lived one itself, and attaches a
+# provenance attestation.
+#
+# npm trusts a workflow only for a package that already exists, so the very
+# first release cannot use it. For that one release, store an npm granular
+# access token (publish rights for the @bowire scope) as the repository
+# secret NPM_TOKEN; the job uses it while it is there. After the first
+# publish, add this repository and `release.yml` as a trusted publisher in
+# the package's settings on npmjs.com, then delete the secret.
+#
+# workflow_dispatch publishes an existing tag again. A version already on npm
+# is skipped, not an error, so a re-run is harmless.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The existing tag to publish, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm Trusted Publishing and provenance: the job's OIDC token.
+      id-token: write
+    # Job-level env so the optional secret is visible in `if:` expressions.
+    env:
+      HAS_BOOTSTRAP_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing needs npm 11.5.1 or later.
+      - name: npm with Trusted Publishing
+        run: npm install -g npm@^11.5.1 && npm --version
+
+      # A tag that disagrees with package.json would publish a version nobody
+      # tagged; refuse it before anything leaves the runner.
+      - name: The tag names the package's version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          echo "package version $version, tag $TAG"
+          test "v$version" = "$TAG"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The same gate as CI, on exactly the commit being published.
+      - name: Install, typecheck, test, build
+        run: |
+          npm ci
+          npm run typecheck
+          npx vitest run
+          npm run build
+
+      - name: Already on npm?
+        id: published
+        run: |
+          if npm view "@bowire/plugin@${{ steps.version.outputs.version }}" version > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (first release, bootstrap token)
+        if: steps.published.outputs.exists != 'true' && env.HAS_BOOTSTRAP_TOKEN == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+      - name: Publish (Trusted Publishing)
+        if: steps.published.outputs.exists != 'true' && env.HAS_BOOTSTRAP_TOKEN != 'true'
+        run: npm publish --access public
+
+      - name: Nothing to publish
+        if: steps.published.outputs.exists == 'true'
+        run: echo "@bowire/plugin ${{ steps.version.outputs.version }} is already on npm"

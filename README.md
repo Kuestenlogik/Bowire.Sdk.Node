@@ -269,6 +269,15 @@ const svc = new ServiceInfo("Demo")
   ]);
 ```
 
+## Releasing
+
+Pushing a tag `vX.Y.Z` that matches `version` in `package.json` publishes
+`@bowire/plugin` to npm (`.github/workflows/release.yml`). The workflow
+typechecks, tests and builds that commit, then publishes through npm Trusted
+Publishing with a provenance attestation, so no registry token is stored. A
+version already on npm is skipped. To publish an existing tag again, run the
+workflow by hand with that tag.
+
 ## Breaking changes
 
 Pre-1.0, changes land in one cut. Since 0.2.0:
