@@ -115,6 +115,43 @@ only keys someone actually set travel. `SettingValues` handles both:
 Env vars are not the channel for settings: `envPrefix` forwards the
 host's environment once, at spawn.
 
+## Hand-entry form
+
+A user can call your plugin without discovery, from the workbench's
+freeform form or Compose. Only your plugin knows what such a call needs.
+**Declare** it in `manualEntry()`. The SDK puts it in the `initialize`
+reply, and the workbench renders a Compose form from it and offers exactly
+these method types in the freeform form (Bowire 2.11 and later).
+
+```ts
+import type { ManualEntryForm } from "@bowire/plugin";
+
+manualEntry(): ManualEntryForm {
+  return {
+    urlPlaceholder: "mybroker://localhost:9000",
+    callKinds: [
+      { id: "produce", label: "Produce", methodType: "Unary", service: "{topic}", method: "produce" },
+      { id: "consume", label: "Consume", methodType: "ServerStreaming", service: "{topic}", method: "consume" },
+    ],
+    fields: [
+      { key: "topic", label: "Topic", placement: "template", required: true },
+      { key: "key", label: "Key", callKinds: ["produce"] },
+    ],
+  };
+}
+```
+
+- A **call kind** names how it runs. `Unary` is `invoke`, `ServerStreaming`
+  is `invokeStream`, and `ClientStreaming` or `Duplex` is `openChannel`.
+  `service` and `method` are templates: `{key}` stands for the value of
+  the field with that key.
+- A **field** with `placement: "template"` only feeds the templates. The
+  default, `"metadata"`, goes into the call's metadata under its `key`,
+  which is where your `invoke` reads it.
+- A form the host would refuse, with an unknown method type, a placeholder
+  no field declares or a `select` without `options`, fails `initialize`
+  with the reason. `manualEntryProblems(form)` runs the same check in a test.
+
 ## Channels
 
 A duplex method (`MethodInfo.bidirectional`) is served by `openChannel`.

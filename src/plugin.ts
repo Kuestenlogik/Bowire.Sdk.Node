@@ -4,6 +4,7 @@ import type {
   ServiceInfo,
 } from "./models.js";
 import type { SettingValues } from "./settings.js";
+import type { ManualEntryForm } from "./manual-entry.js";
 
 // Streaming response yielded by `invokeStream`. The runtime wraps
 // each yielded payload as a `$/stream/data` notification.
@@ -40,7 +41,7 @@ export interface ChannelHandle {
 // The plugin contract every Bowire sidecar implements.
 //
 // Required: id, name, discover, invoke.
-// Optional: iconSvg, invokeStream, openChannel, settings, shutdown —
+// Optional: iconSvg, invokeStream, openChannel, settings, manualEntry, shutdown —
 // defaults in `BowirePluginBase` cover the common case.
 //
 // Parameter names are the host's, deliberately: `serverUrl`,
@@ -95,6 +96,11 @@ export interface BowirePlugin {
   ): Promise<void> | void;
 
   settings?(): Promise<PluginSetting[]> | PluginSetting[];
+
+  // How a call is entered by hand (Kuestenlogik/Bowire#1003): put in the
+  // `initialize` reply as `manualEntry`. Leave it off, or return undefined,
+  // and the host offers no form for this plugin.
+  manualEntry?(): Promise<ManualEntryForm | undefined> | ManualEntryForm | undefined;
 
   shutdown?(): Promise<void> | void;
 }

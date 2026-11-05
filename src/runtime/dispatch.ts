@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { manualEntryProblems } from "../manual-entry.js";
 import type { BowirePlugin, Metadata } from "../plugin.js";
 import { SettingValues } from "../settings.js";
 import type { ChannelRegistry } from "./channels.js";
@@ -103,6 +104,13 @@ export async function dispatch(
       }
 
       case "initialize": {
+        // A form the host would refuse fails the handshake here, naming what
+        // is wrong, rather than silently never appearing in the workbench.
+        const manualEntry = plugin.manualEntry ? await plugin.manualEntry() : undefined;
+        if (manualEntry) {
+          const problems = manualEntryProblems(manualEntry);
+          if (problems.length > 0) throw new Error("manualEntry: " + problems.join("; "));
+        }
         return {
           kind: "reply",
           response: ok(id, {
@@ -110,6 +118,7 @@ export async function dispatch(
             name: plugin.name(),
             iconSvg: plugin.iconSvg ? plugin.iconSvg() : "",
             settings: plugin.settings ? await plugin.settings() : [],
+            ...(manualEntry ? { manualEntry } : {}),
             protocolVersion: SIDECAR_PROTOCOL_VERSION,
             capabilities: capabilities(plugin),
           }),

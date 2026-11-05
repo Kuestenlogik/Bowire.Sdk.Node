@@ -17,6 +17,7 @@ import {
   run,
   runHttp,
   type ChannelHandle,
+  type ManualEntryForm,
   type Metadata,
   type SettingValues,
 } from "../../src/index.js";
@@ -38,6 +39,16 @@ const SETTINGS = [
     .withDefault(3),
 ];
 
+// How the three methods are called by hand, without discovery
+// (Kuestenlogik/Bowire#1003): the workbench renders a form from this.
+const MANUAL_ENTRY: ManualEntryForm = {
+  callKinds: [
+    { id: "echo", label: "Echo", methodType: "Unary", service: "EchoService", method: "Echo", bodyExample: '{"text":"hello"}' },
+    { id: "watch", label: "Watch", methodType: "ServerStreaming", service: "EchoService", method: "Watch" },
+    { id: "chat", label: "Chat", methodType: "Duplex", service: "EchoService", method: "Chat", bodyExample: '"hello"' },
+  ],
+};
+
 function transform(text: string, settings: SettingValues): string {
   switch (settings.string("transform")) {
     case "upper":
@@ -58,6 +69,9 @@ class EchoPlugin extends BowirePluginBase {
   }
   override settings(): PluginSetting[] {
     return SETTINGS;
+  }
+  manualEntry(): ManualEntryForm {
+    return MANUAL_ENTRY;
   }
   override discover(): ServiceInfo[] {
     return [

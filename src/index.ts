@@ -14,6 +14,14 @@ export {
 export { SettingValues } from "./settings.js";
 
 export {
+  manualEntryProblems,
+  type ManualCallKind,
+  type ManualEntryForm,
+  type ManualField,
+  type ManualMethodType,
+} from "./manual-entry.js";
+
+export {
   BowirePluginBase,
   type BowirePlugin,
   type ChannelHandle,

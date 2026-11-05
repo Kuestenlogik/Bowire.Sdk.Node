@@ -146,6 +146,31 @@ async function checkSettings(s: Session): Promise<void> {
   console.log("settings: values reach the plugin per call");
 }
 
+// Kuestenlogik/Bowire#1003: the hand-entry form the example declares is
+// served by the host's ManualEntry service. A host before Bowire 2.11 has no
+// such service (404); CI installs the latest released tool, so that is a
+// note, not a failure, until 2.11 is out.
+async function checkManualEntry(workbench: Workbench): Promise<void> {
+  // Not workspace-scoped: the forms describe the loaded plugins.
+  const res = await fetch(`${workbench.url}/api/v1/manual-entry-forms?pageSize=200`);
+  if (res.status === 404) {
+    console.log("manual entry: skipped, this host predates Bowire 2.11");
+    return;
+  }
+  assert(res.ok, `manual-entry forms answer (${res.status})`);
+  const body = (await res.json()) as {
+    forms: { protocol: string; callKinds: { id: string; methodType: string }[] }[];
+  };
+  const echo = body.forms.find((f) => f.protocol === PROTOCOL);
+  assert(echo, "the echo plugin's form is served");
+  assert(
+    echo.callKinds.map((k) => `${k.id}:${k.methodType}`).join(",") ===
+      "echo:Unary,watch:ServerStreaming,chat:Duplex",
+    `the form carries its call kinds: ${echo.callKinds.map((k) => k.id).join(",")}`,
+  );
+  console.log("manual entry: the declared form is served");
+}
+
 // #4: a duplex method end to end, closed once from each side. The setting is
 // set first, so this also proves openChannel receives the values.
 async function checkChannels(s: Session): Promise<void> {
@@ -202,6 +227,7 @@ async function main(): Promise<void> {
     const session = new Session(workbench, storageRoot);
     await checkSettings(session);
     await checkChannels(session);
+    await checkManualEntry(workbench);
   } catch (e) {
     console.error(`host log: ${workbench.logFile}`);
     throw e;
