@@ -251,6 +251,13 @@ onto (`$/stream/data`, `$/stream/end`, `$/channel/data`,
 `$/channel/closed`). Fits hosted /
 multi-tenant deployments where one sidecar serves many workbenches.
 
+The host neither starts nor stops an http sidecar. It connects to the
+`url` in the manifest (`"transport": "http"`), so the sidecar runs on its
+own and ends when you `close()` it. `close()` also ends the SSE streams
+that hosts hold open. The echo example runs this way with
+`BOWIRE_HTTP_PORT=0` (the OS picks the port, and the line it prints says
+which), and the CI e2e job drives it over both transports.
+
 ## Wire model
 
 Service / method / message / field shapes are emitted as camelCase

@@ -1,15 +1,27 @@
 // End-to-end checks of the example plugin against the real Bowire host.
 //
-//   tsx e2e/host.ts --bowire <bowire executable> --plugin-dir <dir> --work-dir <dir>
+//   tsx e2e/host.ts --plugin-dir <dir> --work-dir <dir> [--bowire <exe>]
+//   tsx e2e/host.ts --transport http --sidecar <compiled main.js> --plugin-dir <dir> --work-dir <dir>
 //
-// The plugin must already be installed into --plugin-dir (the CI job does
-// that with `bowire plugin install`). --work-dir is a scratch directory: the
-// port file lands there, and it serves as the workspace's storage root, so
-// the settings this writes stay out of the operator's ~/.bowire.
+// stdio (the default): the plugin must already be installed into
+// --plugin-dir (the CI job does that with `bowire plugin install`), and the
+// host spawns it.
+//
+// http (#17): the sidecar runs on its own. This starts the compiled example
+// in HTTP mode on a port the OS picks, installs a sidecar zip whose manifest
+// says `"transport": "http"` and that `url`, asks the CLI to discover, runs
+// the same checks as over stdio, and at the end stops the sidecar while the
+// host is still connected to it.
+//
+// --work-dir is a scratch directory: the port file and the logs land there,
+// and it serves as the workspace's storage root, so the settings this writes
+// stay out of the operator's ~/.bowire.
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { startHttpSidecar, type HttpSidecar } from "./sidecar.js";
 import {
   getJson,
   readSse,
@@ -18,6 +30,7 @@ import {
   type SseEvent,
   type Workbench,
 } from "./workbench.js";
+import { writeZip } from "./zip.js";
 
 const PROTOCOL = "echo";
 const SERVICE = "EchoService";
@@ -63,6 +76,28 @@ class Session {
     });
     assert(reply.status === "OK", `Echo status OK, got ${reply.status}`);
     return (JSON.parse(reply.response) as { echoed: string }).echoed;
+  }
+
+  // A server stream through the workbench's stream endpoint, which runs the
+  // host's invokeStream. Over http its frames reach the host as
+  // $/stream/data on the sidecar's SSE stream, and $/stream/end is what ends
+  // this request.
+  async watch(): Promise<{ frames: unknown[]; done: number }> {
+    const params = new URLSearchParams({
+      protocol: PROTOCOL,
+      service: SERVICE,
+      method: "Watch",
+      messages: JSON.stringify(["{}"]),
+    });
+    const res = await fetch(`${this.url("/api/invoke/stream")}&${params}`);
+    const events: SseEvent[] = [];
+    await readSse(res, (e) => events.push(e));
+    return {
+      frames: events
+        .filter((e) => e.event === "message")
+        .map((e) => JSON.parse((JSON.parse(e.data) as { data: string }).data) as unknown),
+      done: events.filter((e) => e.event === "done").length,
+    };
   }
 
   setSetting(key: string, value: string | null): Promise<unknown> {
@@ -146,6 +181,25 @@ async function checkSettings(s: Session): Promise<void> {
   console.log("settings: values reach the plugin per call");
 }
 
+// A server-streaming method: Watch streams as many ticks as its `ticks`
+// setting says, so this also proves invokeStream receives the values.
+async function checkStream(s: Session): Promise<void> {
+  const ticks = (r: { frames: unknown[] }) =>
+    r.frames.map((f) => (f as { tick: number }).tick).join(",");
+  const byDefault = await s.watch();
+  assert(ticks(byDefault) === "0,1,2", `three ticks by default: ${ticks(byDefault)}`);
+  assert(byDefault.done === 1, "the stream ended once");
+
+  await s.setSetting("ticks", "2");
+  try {
+    const set = await s.watch();
+    assert(ticks(set) === "0,1", `the set value reaches invokeStream: ${ticks(set)}`);
+  } finally {
+    await s.setSetting("ticks", null);
+  }
+  console.log("stream: frames in order, ended, settings applied");
+}
+
 // Kuestenlogik/Bowire#1003: the hand-entry form the example declares is
 // served by the host's ManualEntry service. A host before Bowire 2.11 has no
 // such service (404); CI installs the latest released tool, so that is a
@@ -207,34 +261,111 @@ async function checkChannels(s: Session): Promise<void> {
   }
 }
 
+function bowireCli(bowire: string, args: string[]): string {
+  const run = spawnSync(bowire, args, { encoding: "utf8" });
+  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  console.log(output);
+  if (run.error) throw run.error;
+  assert(run.status === 0, `bowire ${args.join(" ")} exited ${run.status}`);
+  return output;
+}
+
+// Starts the example as an http sidecar and installs it the way an operator
+// does: a zip with nothing but the manifest, which points at the sidecar.
+async function installHttpSidecar(
+  bowire: string,
+  entry: string,
+  pluginDir: string,
+  workDir: string,
+): Promise<HttpSidecar> {
+  const sidecar = await startHttpSidecar(resolve(entry), workDir);
+  console.log(`http sidecar at ${sidecar.url}`);
+  const stdio = JSON.parse(
+    readFileSync(new URL("../examples/echo/sidecar.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+  const { executable: _e, args: _a, envPrefix: _p, ...rest } = stdio;
+  const manifest = {
+    ...rest,
+    packageId: `${String(stdio.packageId)}.Http`,
+    transport: "http",
+    url: sidecar.url,
+  };
+  const zip = join(workDir, "echo-node-http.zip");
+  writeZip(zip, { "sidecar.json": JSON.stringify(manifest, null, 2) });
+  bowireCli(bowire, ["--plugin-dir", pluginDir, "plugin", "install", "--file", zip]);
+  bowireCli(bowire, ["--plugin-dir", pluginDir, "plugin", "list", "--verbose"]);
+  const discovered = bowireCli(bowire, [
+    "--plugin-dir",
+    pluginDir,
+    "discover",
+    "--url",
+    `${PROTOCOL}@http://localhost:1`,
+  ]);
+  assert(discovered.includes(SERVICE), "the CLI discovers the service over http");
+  return sidecar;
+}
+
+// The host does not own an http sidecar, so it has to stop when told to,
+// while the host still holds its SSE stream open. On Windows a kill is not a
+// signal the process can handle, so there the exit is only awaited.
+async function stopHttpSidecar(sidecar: HttpSidecar): Promise<void> {
+  const exit = await sidecar.stop();
+  if (process.platform !== "win32") {
+    assert(exit.code === 0, `the sidecar stopped cleanly (${JSON.stringify(exit)})`);
+  }
+  console.log("http sidecar: stopped with the host still connected");
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       bowire: { type: "string", default: "bowire" },
+      transport: { type: "string", default: "stdio" },
+      sidecar: { type: "string" },
       "plugin-dir": { type: "string" },
       "work-dir": { type: "string" },
     },
   });
   const pluginDir = values["plugin-dir"];
   const workDir = values["work-dir"];
+  const transport = values.transport;
   if (!pluginDir || !workDir) throw new Error("--plugin-dir and --work-dir are required");
+  if (transport !== "stdio" && transport !== "http") {
+    throw new Error(`--transport is stdio or http, not ${transport}`);
+  }
+  if (transport === "http" && !values.sidecar) {
+    throw new Error("--transport http needs --sidecar <compiled examples/echo/main.js>");
+  }
 
   const storageRoot = join(workDir, "workspace");
   mkdirSync(storageRoot, { recursive: true });
 
-  const workbench = await startWorkbench(values.bowire, pluginDir, workDir);
+  const sidecar =
+    transport === "http"
+      ? await installHttpSidecar(values.bowire, values.sidecar as string, pluginDir, workDir)
+      : undefined;
   try {
-    const session = new Session(workbench, storageRoot);
-    await checkSettings(session);
-    await checkChannels(session);
-    await checkManualEntry(workbench);
+    const workbench = await startWorkbench(values.bowire, pluginDir, workDir);
+    try {
+      const session = new Session(workbench, storageRoot);
+      await checkSettings(session);
+      await checkStream(session);
+      await checkChannels(session);
+      await checkManualEntry(workbench);
+      if (sidecar) await stopHttpSidecar(sidecar);
+    } catch (e) {
+      console.error(`host log: ${workbench.logFile}`);
+      throw e;
+    } finally {
+      await workbench.stop();
+    }
   } catch (e) {
-    console.error(`host log: ${workbench.logFile}`);
+    if (sidecar) console.error(`sidecar log: ${sidecar.logFile}`);
     throw e;
   } finally {
-    await workbench.stop();
+    if (sidecar) await sidecar.stop();
   }
-  console.log("e2e: all checks passed");
+  console.log(`e2e: all ${transport} checks passed`);
 }
 
 await main();

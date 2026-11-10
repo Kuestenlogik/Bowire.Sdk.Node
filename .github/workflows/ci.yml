@@ -63,17 +63,22 @@ jobs:
   # `bowire discover` exits 0 only when a plugin actually returned a service,
   # so the exit code is the assertion.
   e2e:
-    name: e2e against Bowire (${{ matrix.os }})
+    name: e2e against Bowire (${{ matrix.os }}, ${{ matrix.transport }})
     # Windows as well as Linux: the manifest names its interpreter
     # (`"executable": "node"`) instead of shipping a Unix-only run.sh, and a
     # Windows leg is what proves that manifest is cross-platform (#5). The
     # host resolves a bare name through PATH, PATHEXT included
     # (Kuestenlogik/Bowire#692).
+    #
+    # Both transports (#17): over stdio the host spawns the sidecar; over
+    # http it runs on its own, the host POSTs to it and reads its
+    # notifications off one SSE stream. The checks are the same.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        transport: [stdio, http]
     defaults:
       run:
         shell: bash
@@ -109,19 +114,24 @@ jobs:
       # keeps the repo layout so the example's relative import still lands,
       # and the manifest's `args` name that path). Compress-Archive because
       # it is on both runners; `zip` is not on Windows.
+      - name: Compile the example with the SDK
+        run: npx tsc -p tsconfig.e2e.json
+
       - name: Package the example as a sidecar zip
+        if: matrix.transport == 'stdio'
         shell: pwsh
         run: |
-          npx tsc -p tsconfig.e2e.json
           Copy-Item examples/echo/sidecar.json stage/
           Compress-Archive -Path stage/* -DestinationPath echo-node.zip
 
       - name: Install it as a plugin
+        if: matrix.transport == 'stdio'
         run: |
           bowire --plugin-dir "$PLUGIN_DIR" plugin install --file echo-node.zip
           bowire --plugin-dir "$PLUGIN_DIR" plugin list --verbose
 
       - name: Discover through the real host
+        if: matrix.transport == 'stdio'
         run: |
           out=$(bowire --plugin-dir "$PLUGIN_DIR" discover --url "echo@http://localhost:1")
           echo "$out"
@@ -130,14 +140,22 @@ jobs:
       # The CLI has no workspace, so it never sends plugin settings (#693),
       # and no command of it drives a duplex channel (#4). The workbench does
       # both: e2e/host.ts starts it headless and goes through the endpoints
-      # its UI uses — a setting declared and read back, and the example's
-      # Chat method opened, sent over both ways and closed from each side.
-      - name: Settings and channels through the workbench
-        run: npx tsx e2e/host.ts --plugin-dir "$PLUGIN_DIR" --work-dir "$WORK_DIR"
+      # its UI uses — a setting declared and read back, a server stream, and
+      # the example's Chat method opened, sent over both ways and closed from
+      # each side. For http it first starts the sidecar, installs a manifest
+      # that points at it and discovers through the CLI, and at the end stops
+      # the sidecar while the host is still connected.
+      - name: Through the workbench
+        run: >-
+          npx tsx e2e/host.ts --transport ${{ matrix.transport }}
+          --sidecar stage/examples/echo/main.js
+          --plugin-dir "$PLUGIN_DIR" --work-dir "$WORK_DIR"
 
-      - name: Host log
+      - name: Host and sidecar logs
         if: failure()
-        run: cat "$WORK_DIR/host.log" || true
+        run: |
+          cat "$WORK_DIR/host.log" || true
+          cat "$WORK_DIR/sidecar.log" || true
 
   gate:
     name: gate

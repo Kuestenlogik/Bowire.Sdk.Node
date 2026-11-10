@@ -3,7 +3,7 @@
 // stdio mode (default):
 //   tsx examples/echo/main.ts
 //
-// HTTP/SSE mode:
+// HTTP/SSE mode (0 lets the OS pick the port; the line printed says which):
 //   BOWIRE_HTTP_PORT=8770 tsx examples/echo/main.ts
 
 import {
@@ -157,8 +157,18 @@ function wantsClose(message: string): boolean {
 
 const httpPort = process.env.BOWIRE_HTTP_PORT;
 if (httpPort) {
+  // An http sidecar runs on its own; the host connects to it and never stops
+  // it. Port 0 lets the OS pick one, and the line below says which: it is
+  // printed once the sidecar accepts connections.
   const handle = await runHttp(new EchoPlugin(), "127.0.0.1", Number(httpPort));
-  process.stderr.write(`echo listening on http://127.0.0.1:${handle.port}\n`);
+  process.stderr.write(`echo listening on http://127.0.0.1:${handle.port}/\n`);
+  // Told to stop, end the SSE streams hosts hold open and exit cleanly.
+  const stop = async () => {
+    await handle.close();
+    process.exit(0);
+  };
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
 } else {
   await run(new EchoPlugin());
 }
