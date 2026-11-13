@@ -258,13 +258,14 @@ describe("channels", () => {
     expect(plugin.prefix).toBe("echo:");
   });
 
-  it("shutdown closes every open channel", async () => {
+  // A runtime that is stopping closes its registry: stdio on `shutdown` or
+  // a closed stdin, http for the session of the host that left.
+  it("closeAll closes every open channel", async () => {
     const plugin = new ChatPlugin();
     const host = new Host(plugin);
     await host.open("x1");
     await host.open("x2");
-    const r = await dispatch(plugin, { jsonrpc: "2.0", id: 99, method: "shutdown" }, host.channels);
-    expect(r.kind).toBe("shutdown");
+    await host.channels.closeAll();
     expect(host.stream("x1").closed).toBe(1);
     expect(host.stream("x2").closed).toBe(1);
     expect(plugin.closes).toEqual({ x1: 1, x2: 1 });

@@ -216,7 +216,9 @@ describe("dispatch", () => {
     expect(frames).toEqual(["frame-1", "frame-2"]);
   });
 
-  it("shutdown calls plugin.shutdown and returns shutdown kind", async () => {
+  // What stops is the runtime's call: the process over stdio, the calling
+  // host's session over http (Kuestenlogik/Bowire#1014).
+  it("shutdown returns shutdown kind and leaves the plugin to the runtime", async () => {
     const p = new TestPlugin();
     const r = await dispatch(p, {
       jsonrpc: "2.0",
@@ -224,7 +226,7 @@ describe("dispatch", () => {
       method: "shutdown",
     });
     expect(r.kind).toBe("shutdown");
-    expect(p.shutdownCalled).toBe(true);
+    expect(p.shutdownCalled).toBe(false);
   });
 
   it("unknown method returns method-not-found", async () => {

@@ -18,7 +18,8 @@ import {
 // runtimes (stdio, http) translate this into the right wire effect:
 // `reply` lands in the response body; `stream` returns the ack and
 // pumps the iterable as `$/stream/data` notifications; `shutdown`
-// returns the ack and signals the runtime to stop.
+// returns the ack and leaves it to the runtime what stops: the process
+// (stdio) or the calling host's session (http).
 export type DispatchResult =
   | { kind: "reply"; response: Response }
   | {
@@ -96,10 +97,10 @@ export async function dispatch(
   try {
     switch (req.method) {
       case "shutdown": {
-        // Every open channel ends first, so the host's read streams end
-        // and the plugin's onClose handlers run before it is torn down.
-        await channels.closeAll();
-        if (plugin.shutdown) await plugin.shutdown();
+        // What ends is the runtime's to say (Kuestenlogik/Bowire#1014).
+        // Over stdio the process stops: every channel closes and the
+        // plugin's shutdown hook runs. Over http only the calling host's
+        // session ends, and the hook waits for the sidecar itself to stop.
         return { kind: "shutdown", response: ok(id, {}) };
       }
 

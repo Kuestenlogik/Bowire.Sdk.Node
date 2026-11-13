@@ -183,8 +183,9 @@ openChannel(serverUrl, service, method, metadata, channel: ChannelHandle,
   host is told — they may still `send` a last frame.
 - `channel.id` is the id the host minted. Several channels can be open
   at once; each handle only ever sees its own frames.
-- `shutdown`, and a host that goes away (stdin closes), close every open
-  channel.
+- Over stdio, `shutdown` and a host that goes away (stdin closes) close
+  every open channel. Over http a host that leaves closes its own channels
+  only (see [Sessions](#sessions)).
 
 `initialize` reports `capabilities.channels: true` only for a plugin that
 implements `openChannel`, so the host does not offer a channel the plugin
@@ -253,10 +254,34 @@ multi-tenant deployments where one sidecar serves many workbenches.
 
 The host neither starts nor stops an http sidecar. It connects to the
 `url` in the manifest (`"transport": "http"`), so the sidecar runs on its
-own and ends when you `close()` it. `close()` also ends the SSE streams
-that hosts hold open. The echo example runs this way with
+own and ends when you `close()` it. `close()` ends every session, runs the
+plugin's `shutdown` hook and ends the SSE streams that hosts hold open; call
+it when the process is told to stop. The echo example runs this way with
 `BOWIRE_HTTP_PORT=0` (the OS picks the port, and the line it prints says
 which), and the CI e2e job drives it over both transports.
+
+#### Sessions
+
+One http sidecar serves several hosts, and each names itself with a
+`Bowire-Session` request header on every POST and on its SSE stream. The
+runtime keeps them apart for you:
+
+- A channel or stream belongs to the session that opened it, and its frames
+  go to that session's SSE streams only. One host never reads another's.
+- A host that leaves ends its own session: it sends `shutdown`, or its SSE
+  stream closes (a crash, a lost network). Its channels close, their
+  `onClose` handlers run, and its `invokeStream` iterators are asked to
+  return. Every other host carries on.
+- The plugin's `shutdown` hook is not part of that. It runs once, when the
+  sidecar itself stops: in `close()` over http, and on `shutdown` or a closed
+  stdin over stdio, where the host owns the process.
+- A host older than Bowire 2.11 sends no header. Such hosts share one unnamed
+  session, and a `shutdown` from one of them ends nothing.
+
+A plugin needs no code for any of this. Release what a channel holds in its
+`onClose` handler, what a stream holds in a `finally`, and what the plugin
+as a whole holds in `shutdown`. The contract is in the Bowire repo's
+`docs/architecture/sidecar-plugins.md`, "Sessions over http".
 
 ## Wire model
 
@@ -289,6 +314,13 @@ workflow by hand with that tag.
 
 Pre-1.0, changes land in one cut. Since 0.2.0:
 
+- Over http, a host's `shutdown` ends that host's session and no longer
+  closes every channel or calls the plugin's `shutdown` hook
+  (Kuestenlogik/Bowire#1014). The hook runs in `close()`. Over stdio it now
+  also runs when stdin closes without a `shutdown`.
+- `dispatch` answers `shutdown` without closing channels or calling the
+  hook; the runtime that called it decides what stops. Only code that drives
+  `dispatch` directly is affected.
 - `BowirePluginBase` no longer ships an empty `invokeStream` (#15). The
   default made `capabilities.invokeStream` claim streaming for every plugin,
   which then answered the host with a stream of nothing. Implement it, or

@@ -3,9 +3,12 @@ import type { BowirePlugin } from "../plugin.js";
 import { ChannelRegistry } from "./channels.js";
 import { dispatch } from "./dispatch.js";
 import type { Notification, Request, Response } from "./jsonrpc.js";
+import { pumpStream } from "./streams.js";
 
 // Drive `plugin` over the NDJSON JSON-RPC contract on stdin/stdout.
-// Resolves once the host sends `shutdown` or stdin closes.
+// Resolves once the host sends `shutdown` or stdin closes. Either way the
+// process is stopping: over stdio the host owns the sidecar, so every open
+// channel closes and the plugin's `shutdown` hook runs, once.
 //
 // One JSON object per line, no framing headers (mirrors the Python
 // and Rust SDKs). Server-initiated frames are written as
@@ -22,7 +25,7 @@ export async function run(plugin: BowirePlugin): Promise<void> {
   };
 
   const channels = new ChannelRegistry(writeFrame);
-  let stop = false;
+  let stopped = false;
 
   for await (const line of rl) {
     const trimmed = line.trim();
@@ -41,40 +44,26 @@ export async function run(plugin: BowirePlugin): Promise<void> {
     if (outcome.kind === "reply") {
       writeFrame(outcome.response);
     } else if (outcome.kind === "shutdown") {
+      // Channels first, so the host's read streams end and the plugin's
+      // onClose handlers run before it is torn down; the reply last, so the
+      // host hears "done" only once it is.
+      await stopPlugin(plugin, channels);
+      stopped = true;
       writeFrame(outcome.response);
-      stop = true;
+      break;
     } else {
       writeFrame(outcome.ack);
       pumpStream(outcome.streamId, outcome.stream, writeFrame);
     }
-
-    if (stop) break;
   }
 
-  // stdin closed without a shutdown: the host is gone. Run the channels'
-  // onClose handlers anyway so the plugin can release what they hold.
-  await channels.closeAll();
+  // stdin closed without a shutdown: the host is gone. The plugin is told
+  // all the same, so it can release what it and its channels hold.
+  if (!stopped) await stopPlugin(plugin, channels);
   rl.close();
 }
 
-async function pumpStream(
-  streamId: string,
-  stream: AsyncIterable<string>,
-  writeFrame: (n: Notification) => void,
-): Promise<void> {
-  try {
-    for await (const message of stream) {
-      writeFrame({
-        jsonrpc: "2.0",
-        method: "$/stream/data",
-        params: { streamId, message },
-      });
-    }
-  } finally {
-    writeFrame({
-      jsonrpc: "2.0",
-      method: "$/stream/end",
-      params: { streamId },
-    });
-  }
+async function stopPlugin(plugin: BowirePlugin, channels: ChannelRegistry): Promise<void> {
+  await channels.closeAll();
+  if (plugin.shutdown) await plugin.shutdown();
 }
